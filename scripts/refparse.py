@@ -151,20 +151,32 @@ RIS_TYPE_MAP = {
 
 
 def parse_ris(text):
-    entries = []
-    for block in re.split(r"\n\s*\n", text):
-        lines = [ln for ln in block.splitlines() if re.match(r"^[A-Z0-9]{2}  - ", ln)]
-        if not lines:
+    """逐行解析 RIS：以 TY 开始、ER 结束划分记录，兼容无空行分隔的多记录文件。"""
+    records, tags, last_tag = [], None, None
+    for ln in text.splitlines():
+        m = re.match(r"^([A-Z0-9]{2})  - ?(.*)$", ln)
+        if not m:
+            # 续行：并入上一个标签的最后一个值
+            if tags is not None and last_tag and ln.strip():
+                tags[last_tag][-1] += " " + ln.strip()
             continue
-        tags = {}
-        for ln in lines:
-            tag, val = ln[:2], ln[6:].strip()
-            tags.setdefault(tag, []).append(val)
-        if "TY" not in tags:
+        tag, val = m.group(1), m.group(2).strip()
+        if tag == "TY":
+            tags = {"TY": [val]}
+            last_tag = "TY"
             continue
-        entries.append(tags)
+        if tags is None:
+            continue
+        if tag == "ER":
+            records.append(tags)
+            tags, last_tag = None, None
+            continue
+        tags.setdefault(tag, []).append(val)
+        last_tag = tag
+    if tags:  # 文件末尾缺少 ER 的容错
+        records.append(tags)
     out = []
-    for tags in entries:
+    for tags in records:
         e = {
             "type": RIS_TYPE_MAP.get(tags.get("TY", [""])[0], "other"),
             "title": (tags.get("TI") or tags.get("T1") or [""])[0],
@@ -205,67 +217,79 @@ ENW_TYPE_MAP = {
 
 
 def parse_enw(text):
-    """EndNote 标签格式（CNKI 导出 EndNote 选项同为该格式）与 Refworks 标签。"""
-    blocks = re.split(r"\n\s*\n", text)
+    """EndNote 标签格式（CNKI 导出 EndNote 选项同为该格式）与 Refworks 标签。
+
+    以 %0 / RT 标签作为记录起点，兼容无空行分隔的导出文件。"""
     out = []
-    for block in blocks:
-        raw = {"authors": []}
-        etype = ""
-        for ln in block.splitlines():
-            m = re.match(r"(%\w|RT |T1 |A1 |JF |JO |VL |IS |SP |OP |PB |PP |YR |DO |UR )\s*(.*)$", ln)
-            if not m:
-                continue
-            tag, val = m.group(1), m.group(2).strip()
-            if tag == "%0":
-                etype = val
-            elif tag == "RT ":
-                etype = {"Journal": "Journal Article", "Confpaper": "Conference Paper"}.get(val, val)
-            elif tag in ENW_TAG_MAP:
-                k = ENW_TAG_MAP[tag]
-                (raw.setdefault(k, []).append(val) if k == "authors" else raw.__setitem__(k, val))
-            elif tag == "T1 ":
-                raw["title"] = val
-            elif tag == "A1 ":
-                raw.setdefault("authors", []).append(val)
-            elif tag in ("JF ", "JO "):
-                raw["journal"] = val
-            elif tag == "VL ":
-                raw["volume"] = val
-            elif tag == "IS ":
-                raw["issue"] = val
-            elif tag == "SP ":
-                raw["pages"] = val
-            elif tag == "OP ":
-                raw["pages"] = (raw.get("pages", "") + "-" + val).strip("-")
-            elif tag == "YR ":
-                raw["year"] = val
-            elif tag == "DO ":
-                raw["doi"] = val.lower()
-            elif tag == "UR ":
-                raw["url"] = val
-            elif tag == "PB ":
-                raw["publisher"] = val
-        if not raw.get("title"):
+    raw, etype = None, ""
+
+    def flush():
+        if raw and raw.get("title"):
+            out.append(_enw_to_entry(raw, etype))
+
+    for ln in text.splitlines():
+        m = re.match(r"(%\w|RT |T1 |A1 |JF |JO |VL |IS |SP |OP |PB |PP |CY |YR |DO |UR )\s*(.*)$", ln)
+        if not m:
             continue
-        e = {
-            "type": ENW_TYPE_MAP.get(etype, "other"),
-            "title": raw.get("title", ""),
-            "authors": raw.get("authors", []),
-            "year": raw.get("year", ""),
-            "journal": raw.get("journal", ""),
-            "booktitle": raw.get("booktitle", ""),
-            "publisher": raw.get("publisher", ""),
-            "address": raw.get("address", ""),
-            "volume": raw.get("volume", ""),
-            "issue": raw.get("issue", ""),
-            "pages": raw.get("pages", "").replace("--", "-"),
-            "doi": raw.get("doi", ""),
-            "arxiv": "",
-            "url": raw.get("url", ""),
-            "source": {"format": "endnote", "key": ""},
-        }
-        out.append(e)
+        tag, val = m.group(1), m.group(2).strip()
+        if tag in ("%0", "RT "):  # 新记录起点
+            flush()
+            raw, etype = {"authors": []}, ""
+        if raw is None:
+            continue
+        if tag == "%0":
+            etype = val
+        elif tag == "RT ":
+            etype = {"Journal": "Journal Article", "Confpaper": "Conference Paper"}.get(val, val)
+        elif tag in ENW_TAG_MAP:
+            k = ENW_TAG_MAP[tag]
+            (raw.setdefault(k, []).append(val) if k == "authors" else raw.__setitem__(k, val))
+        elif tag == "T1 ":
+            raw["title"] = val
+        elif tag == "A1 ":
+            raw.setdefault("authors", []).append(val)
+        elif tag in ("JF ", "JO "):
+            raw["journal"] = val
+        elif tag == "VL ":
+            raw["volume"] = val
+        elif tag == "IS ":
+            raw["issue"] = val
+        elif tag == "SP ":
+            raw["pages"] = val
+        elif tag == "OP ":
+            raw["pages"] = (raw.get("pages", "") + "-" + val).strip("-")
+        elif tag == "CY ":
+            raw["address"] = val
+        elif tag == "YR ":
+            raw["year"] = val
+        elif tag == "DO ":
+            raw["doi"] = val.lower()
+        elif tag == "UR ":
+            raw["url"] = val
+        elif tag == "PB ":
+            raw["publisher"] = val
+    flush()
     return out
+
+
+def _enw_to_entry(raw, etype):
+    return {
+        "type": ENW_TYPE_MAP.get(etype, "other"),
+        "title": raw.get("title", ""),
+        "authors": raw.get("authors", []),
+        "year": raw.get("year", ""),
+        "journal": raw.get("journal", ""),
+        "booktitle": raw.get("booktitle", ""),
+        "publisher": raw.get("publisher", ""),
+        "address": raw.get("address", ""),
+        "volume": raw.get("volume", ""),
+        "issue": raw.get("issue", ""),
+        "pages": raw.get("pages", "").replace("--", "-"),
+        "doi": raw.get("doi", ""),
+        "arxiv": "",
+        "url": raw.get("url", ""),
+        "source": {"format": "endnote", "key": ""},
+    }
 
 
 # ---------------------------------------------------------------- 规范化与入口

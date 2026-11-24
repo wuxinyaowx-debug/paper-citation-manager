@@ -41,14 +41,14 @@ cd <Skill 目录>
 python3 scripts/pipeline.py parse --inputs demo/library.bib --out work/library.json
 python3 scripts/pipeline.py dedup --library work/library.json --out work/library_dedup.json --report out/dedup_report.json
 python3 scripts/pipeline.py verify --library work/library_dedup.json --out out/verify_report.json
-python3 scripts/pipeline.py renumber --manuscript demo/draft.md --library work/library_dedup.json --out out/manuscript_cited.md --order-out work/order.json
-python3 scripts/pipeline.py format --library work/library_dedup.json --order work/order.json --out out/references.md
-python3 scripts/pipeline.py check --manuscript out/manuscript_cited.md --references out/references.md --order work/order.json --library work/library_dedup.json --out out/consistency_report.json
+python3 scripts/pipeline.py renumber --manuscript demo/draft.md --library work/library_dedup.json --out out/manuscript_cited.md --order-out work/order.json --report out/renumber_report.json
+python3 scripts/pipeline.py format --library work/library_dedup.json --order work/order.json --out out/references.md --report out/format_report.json
+python3 scripts/pipeline.py check --manuscript out/manuscript_cited.md --references out/references.md --order work/order.json --library work/library_dedup.json --issues out/renumber_report.json --out out/consistency_report.json
 ```
 
 ## 示意输出
 
-`dedup_report.json` 摘要：`e0002`（arXiv 版）按规则 `arxiv_exact`/`title_author_year` 并入 `e0001`，保留期刊正式版，arXiv 号回填到保留条目。
+`dedup_report.json` 摘要：`e0002`（arXiv 版）按规则 `title_author_year` 并入 `e0001`，保留期刊正式版，arXiv 号回填到保留条目；决策含 `field_comparison`（标题相似度、年份差、首作者）与 `reason`。
 
 `manuscript_cited.md`：
 
@@ -65,6 +65,6 @@ Transformer 架构完全基于注意力机制，摒弃了循环结构[1]。
 [2] 张三, 李四, 王五, 等. 深度学习方法在材料筛选中的应用[J]. 物理学报, 2020, 69(12): 120101. DOI: 10.7498/aps.69.20200123.
 ```
 
-`consistency_report.json` 摘要：`consistent: false`（存在 1 处 `[来源缺失]`，已列入 `uncertainty` 待人工补充文献）。
+`consistency_report.json` 摘要：`structural_consistent: true`，`evidence_complete: false`，`overall_status: "evidence_incomplete"`（存在 1 处 `[来源缺失]`，已列入 `uncertainty` 待人工补充文献；result.json 的 `status` 应如实写 `partial`）。
 
 > 以上为接口演示的示意输出，不代表任何正式测评案例的结果。
