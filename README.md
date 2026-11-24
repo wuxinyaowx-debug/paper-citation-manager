@@ -4,8 +4,10 @@
 
 ## 目录结构
 
+仓库根目录即 Skill 根目录（评测提交时与 GITHUB_URL.txt 一并置于提交目录）：
+
 ```
-submission/
+.
 ├── SKILL.md                        # Skill 本体（入口，YAML frontmatter）
 ├── README.md                       # 本说明
 ├── scripts/
