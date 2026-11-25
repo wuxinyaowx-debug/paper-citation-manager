@@ -24,15 +24,17 @@
 │   ├── dedup.py                    # 分层去重（R1-R4，可解释、防误并、可人工否决）
 │   ├── verify.py                   # Crossref 核验（六态状态机，可离线降级）
 │   ├── renumber.py                 # 上下文安全的编号重排 + 结构/证据两层一致性
-│   └── gbt7714.py                  # GB/T 7714—2015 著录（缺字段告警不编造）
+│   ├── gbt7714.py                  # GB/T 7714—2015 著录（缺字段告警不编造）
+│   └── apa7.py                     # APA 第 7 版著录（不编号、按著者字母排序）
 ├── references/
 │   ├── placement_rules.md          # 引用插入位置与安全识别细则
 │   ├── evidence_mapping.md         # 论断分类、证据等级、冲突证据处理
-│   └── output_contract.md          # result.json 字段规范
+│   ├── output_contract.md          # result.json 字段规范（异常三分）
+│   └── failure_modes.md            # 真实失败案例与前后对照（v1.0→v1.1）
 ├── examples/
 │   └── minimal_example.md          # 最小调用示例（合成演示数据）
 └── tests/
-    └── test_citation_manager.py    # 39 个自动化测试（合成数据，unittest）
+    └── test_citation_manager.py    # 43 个自动化测试（合成数据，unittest）
 ```
 
 ## 快速开始
@@ -121,16 +123,23 @@ python3 $SK/scripts/pipeline.py check \
 
 - 文献库输入：BibTeX、RIS（含无空行分隔多记录）、EndNote 标签、CNKI 导出（EndNote/Refworks 标签）；编码 UTF-8/GBK 自动识别。
 - 稿件输入：Markdown/TXT；PDF 需先用平台工具提取文本。
-- 目标规范：GB/T 7714—2015 顺序编码制（数值型）。
-- 文献类型：期刊 [J]、会议 [C]//、专著 [M]、专著章节 [M]//、学位论文 [D]、报告 [R]、预印本/网络资源 [EB/OL]。
+- 目标规范：GB/T 7714—2015 顺序编码制（数值型，`--style gbt7714`）与 APA 第 7 版（`--style apa7`，不编号、按首著者字母排序）；案例指定其他规范时按最接近者交付并在 uncertainty 说明。
+- 文献类型：期刊、会议、专著、专著章节、学位论文、报告、预印本/网络资源。
 
 ## 已知限制
 
 - 来源核验只接入 Crossref；无 DOI 条目无法自动核验（标 `unverified`）。
 - 中英文题名互译同文、同题不同文等复杂情况只列为人工确认候选，不自动合并。
 - GB/T 7714 未覆盖标准/专利/古籍等类型（兜底 [EB/OL] 并告警）；编者/译者与析出责任者区分需要材料中存在相应字段。
+- APA 7 的题名 sentence case 转换、超过 20 著者的省略规则需人工核对（脚本逐条告警）。
 - 著者—出版年制不改正文，只做双向一致性校验；keymap 由 Agent 生成。
 - 中文语境下空格分隔的方括号数字（如"公式 [3]"）按保守策略不改写，列入人工确认。
+
+## 失败案例与前后对照
+
+`references/failure_modes.md` 记录了本 Skill v1.0→v1.1 开发中由测试真实捕获的 5 类失败
+（结构一致≠证据完整、普通数字误改、RIS 合并、DOI 静默合并、远程缺字段冒充 verified），
+每个案例可经 `tests/` 中的回归测试复现，作为相对基础 Agent 常见错误的对照证据。
 
 ## 测试方法
 
@@ -138,12 +147,12 @@ python3 $SK/scripts/pipeline.py check \
 python3 tests/test_citation_manager.py
 ```
 
-39 个测试覆盖：四种文献库格式解析与编码异常、DOI 冲突/预印本合版/中英文题名候选/同名不同文/缺字段降级等去重场景、离线核验与远程缺字段、占位符解析与未知 ID、既有编号重排与压缩、悬空/未引/缺口检测、普通方括号数字保护、著者—出版年制双向校验、格式化边界、端到端两次运行结果一致性、缺参数友好报错。测试数据全部为合成材料，不代表平台正式案例结果。
+43 个测试覆盖：四种文献库格式解析与编码异常、DOI 冲突/预印本合版/中英文题名候选/同名不同文/缺字段降级等去重场景、离线核验与远程缺字段、占位符解析与未知 ID、既有编号重排与压缩、悬空/未引/缺口检测、普通方括号数字保护、著者—出版年制双向校验、GB/T 7714 与 APA 7 格式化边界、端到端两次运行结果一致性、缺参数友好报错。测试数据全部为合成材料，不代表平台正式案例结果。
 
 ## 资源清单与约束
 
-文本文件 14 个，总量约 90KB，满足 Harbor 限制（≤50 文件、单文件 ≤500KB、总量 ≤2MB、无符号链接、无第三方依赖）。
+文本文件 16 个，总量约 140KB，满足 Harbor 限制（≤50 文件、单文件 ≤500KB、总量 ≤2MB、无符号链接、无第三方依赖）。
 
 ## 维护信息
 
-版本 1.1（2026-11）。脚本无外部依赖，升级只需替换 `scripts/`；修改代码后请先跑测试套件再更新文档。仓库：https://github.com/wuxinyaowx-debug/paper-citation-manager
+版本 1.2（2026-11）。脚本无外部依赖，升级只需替换 `scripts/`；修改代码后请先跑测试套件再更新文档。仓库：https://github.com/wuxinyaowx-debug/paper-citation-manager

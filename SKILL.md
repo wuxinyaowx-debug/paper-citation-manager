@@ -16,10 +16,10 @@ description: 学术稿件的参考文献与引用管理。当任务涉及在稿�
 
 ## 2. 运行契约（平台固定）
 
-- 输入：`/input/case.json` 与 `/input/task.md`；材料按案例提供。**先读真实文件，不按文件名或标签臆测内容。**
+- 输入：`/input/case.json` 与 `/input/task.md`；材料按案例提供。**先读真实文件，不按文件名或标签臆测内容。** 可用工具以 `environment/resources.yaml` 声明为准（PDF 提取、Office 渲染等），先读该文件确认运行时能力。
 - 工作区：`/app/work`；原始输入先复制到 `/app/work/snapshot/` 再处理。
-- 输出：`/app/output`，必含 `result.json`（含 `case_id` 与 case.json `output_contract` 声明的**全部字段**，按实际结果填值；字段规范见 `references/output_contract.md`）。
-- 预算有限：每个阶段完成后立即落盘中问产物，先保诚实可用的部分结果，再改进。
+- 输出：`/app/output`，必含 `result.json`（含 `case_id` 与 case.json `output_contract` 声明的**全部字段**，按实际结果填值；字段规范见 `references/output_contract.md`）。案例要求可编辑 Office/幻灯片/图形产物时，同时用平台渲染工具产出 PDF/PNG 预览供检查。
+- 预算内增量交付（64 次请求 / 900 秒）：**阶段 0 结束立即写一版 `status: "partial"` 的 result.json**（已含 case_id、契约字段骨架、已知不确定性），此后每完成一个阶段就地更新；即使后续阶段超时，也始终存在一份诚实的最新结果。
 - 脚本入口：`scripts/pipeline.py`（相对本 Skill 目录解析，不依赖当前工作目录），仅依赖 Python 3 标准库。下文 `$SK` 指本 Skill 目录。
 
 ## 3. 输入识别
@@ -58,9 +58,10 @@ python3 $SK/scripts/pipeline.py renumber --manuscript /app/work/draft_cited.md \
     --library /app/work/library_dedup.json --out /app/output/manuscript_cited.md \
     --order-out /app/work/order.json --report /app/output/renumber_report.json
 python3 $SK/scripts/pipeline.py format --library /app/work/library_dedup.json \
-    --order /app/work/order.json --out /app/output/references.md \
+    --order /app/work/order.json --style gbt7714 --out /app/output/references.md \
     --report /app/output/format_report.json
 ```
+`--style` 以案例指定的目标规范为准：`gbt7714`（默认）或 `apa7`；案例指定其他规范时在 `uncertainty` 中说明并按最接近的规范交付。
 已有数字编号的稿件改用 `--mode renumber`；著者—出版年制用 `--mode author-year --keymap keymap.json`（keymap 由你生成，格式见 `references/placement_rules.md`）。**order.json 是文献表顺序的唯一依据**：`format` 必须带 `--order`，保证未引用条目不进入最终文献表。报告中的 `ambiguous_markers_untouched` 逐条人工确认，不得擅自改写。
 
 **阶段 6 一致性终检** → `/app/output/consistency_report.json`
@@ -76,16 +77,23 @@ python3 $SK/scripts/pipeline.py check --manuscript /app/output/manuscript_cited.
 
 ## 5. 异常处理
 
-| 异常 | 处置 |
-|-|-|
-| 文献库损坏/格式不识 | 跳过并记录 `parse_warnings`，处理其余文件 |
-| DOI 失败、无网络、限流 | 状态 `offline`，不阻塞后续；不重试超过脚本内置次数 |
-| 条目歧义、字段冲突 | 保留候选，标 `needs_human_review`，写明冲突字段 |
-| ambiguous 数字标记 | 保留原文，列入报告与人工复核 |
-| 编号冲突（正文/列表基数不符） | 以正文首次出现顺序重排，被丢弃列表条目列入 `uncited_list_entries` |
-| PDF 原稿 | 平台工具提取文本后处理，说明版式损失 |
-| 无源论断 | `{cite:MISSING}` + `uncertainty`，禁止编造条目 |
-| 脚本参数/文件错误 | 脚本给出中文提示并非零退出；修正后重跑，不要绕过 |
+异常按三类**分别**报告，不混写：
+
+1. **材料缺失**（`material_gaps`）：无源论断、文献库缺字段、案例材料未提供——继续处理其余部分，逐项列出。
+2. **无法判断**（`undecidable`）：条目歧义、中英文题名同文候选、冲突证据、ambiguous 标记——保留候选与原文，交 `needs_human_review`。
+3. **运行失败**（`runtime_failures`）：文件损坏、解析失败、网络中断、工具不可用——记录文件/步骤与错误，降级或跳过该步骤，不得假装成功。
+
+| 异常 | 类别 | 处置 |
+|-|-|-|
+| 文献库损坏/格式不识 | 运行失败 | 跳过并记录 `parse_warnings`，处理其余文件 |
+| DOI 失败、无网络、限流 | 运行失败 | 状态 `offline`，不阻塞后续；不重试超过脚本内置次数 |
+| 条目歧义、字段冲突 | 无法判断 | 保留候选，标 `needs_human_review`，写明冲突字段 |
+| ambiguous 数字标记 | 无法判断 | 保留原文，列入报告与人工复核 |
+| 编号冲突（正文/列表基数不符） | 无法判断 | 以正文首次出现顺序重排，被丢弃列表条目列入 `uncited_list_entries` |
+| 文献库/稿件字段缺失 | 材料缺失 | 省略对应著录段并告警，不编造出版信息 |
+| PDF 原稿 | 材料缺失（版式） | 平台工具提取文本后处理，说明版式损失 |
+| 无源论断 | 材料缺失 | `{cite:MISSING}` + `uncertainty`，禁止编造条目 |
+| 脚本参数/文件错误 | 运行失败 | 脚本给出中文提示并非零退出；修正后重跑，不要绕过 |
 
 ## 6. 交付前自查清单
 
@@ -99,8 +107,9 @@ python3 $SK/scripts/pipeline.py check --manuscript /app/output/manuscript_cited.
 
 ## 7. 资源与限制
 
-- `scripts/`：pipeline.py（入口）、refparse.py、dedup.py、verify.py、renumber.py、gbt7714.py。
-- `references/`：placement_rules.md（插入位置与安全识别）、evidence_mapping.md（论断分类与证据等级）、output_contract.md（result.json 规范）。
+- `scripts/`：pipeline.py（入口）、refparse.py、dedup.py、verify.py、renumber.py、gbt7714.py、apa7.py。
+- `references/`：placement_rules.md（插入位置与安全识别）、evidence_mapping.md（论断分类与证据等级）、output_contract.md（result.json 规范）、failure_modes.md（真实失败案例与前后对照）。
 - `examples/minimal_example.md`：最小调用示例（合成演示数据）。
 - `tests/test_citation_manager.py`：合成数据自动化测试（`python3 tests/test_citation_manager.py`），用于自查代码正确性，非平台测评结果。
-- 限制：只核验 Crossref；中英文题名互译匹配需人工确认；PDF 版式不保真；著者—出版年制 keymap 由 Agent 生成；GB/T 7714 未覆盖标准/专利/古籍类型（兜底 [EB/OL] 并告警）。
+- 目标规范：GB/T 7714—2015（顺序编码制）与 APA 第 7 版；其他指定规范按最接近者交付并在 `uncertainty` 说明。
+- 限制：只核验 Crossref；中英文题名互译匹配需人工确认；PDF 版式不保真；著者—出版年制 keymap 由 Agent 生成；GB/T 7714 未覆盖标准/专利/古籍类型（兜底 [EB/OL] 并告警）；APA 题名 sentence case 与超 20 著者省略需人工核对。

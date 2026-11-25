@@ -9,7 +9,7 @@
   renumber  --manuscript draft.md [--mode placeholder|renumber|author-year]
             [--library library_dedup.json] [--keymap keymap.json]
             [--out manuscript_cited.md] [--order-out order.json] [--report r.json]
-  format    --library library_dedup.json [--order order.json] [--style gbt7714]
+  format    --library library_dedup.json [--order order.json] [--style gbt7714|apa7]
             [--out references.md] [--report format_report.json]
   check     --manuscript manuscript_cited.md --references references.md
             [--order order.json] [--library library_dedup.json] [--issues renumber_report.json]
@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import apa7 as apa7_mod
 import dedup as dedup_mod
 import gbt7714
 import refparse
@@ -147,9 +148,14 @@ def cmd_renumber(argv):
 def cmd_format(argv):
     entries = _entries(_load(_req(argv, "--library", "format")))
     order = _load(_arg(argv, "--order")) if "--order" in argv else None
-    style = _arg(argv, "--style", "gbt7714")
+    style = _arg(argv, "--style", "gbt7714").lower()
     try:
-        text, warnings = gbt7714.format_library(entries, ordered_ids=order, style=style)
+        if style == "gbt7714":
+            text, warnings = gbt7714.format_library(entries, ordered_ids=order, style=style)
+        elif style in ("apa7", "apa"):
+            text, warnings = apa7_mod.format_library(entries, ordered_ids=order, style="apa7")
+        else:
+            raise ValueError("不支持的目标规范：%s（可选 gbt7714 / apa7）" % style)
     except ValueError as exc:
         raise SystemExit("[format] %s" % exc)
     _write_text(text, _arg(argv, "--out"))

@@ -52,6 +52,9 @@
     "条目 e0011 无 DOI，未能自动核验",
     "疑似中英文题名同文 e0004/e0009 未自动合并，需人工确认"
   ],
+  "material_gaps": ["材料缺失：无源论断、缺字段、未提供的材料，逐项列出"],
+  "undecidable": ["无法判断：歧义条目、冲突证据、ambiguous 标记，保留候选与原文"],
+  "runtime_failures": ["运行失败：损坏文件、解析失败、网络中断，含文件/步骤与错误"],
   "needs_human_review": ["列出所有需人工确认的事项"],
   "limits": "若为 partial/failed，说明完成边界与失败原因"
 }
@@ -63,13 +66,16 @@
    `consistent`；`evidence_incomplete`（如存在 [来源缺失]、低置信引用）必须写
    `partial`，不得包装为 `complete`；`failed` = 主产物未能生成，仍须说明原因
    与已完成工作。
-2. **动作按案例要求执行**：`actions_completed` 只列案例实际要求且已完成的动作；
+2. **异常三分**：材料缺失（`material_gaps`）、无法判断（`undecidable`）、运行失败
+   （`runtime_failures`）分别列报，不混写、不省略；三类均可同时在 `uncertainty`
+   中以一句话总述。
+3. **动作按案例要求执行**：`actions_completed` 只列案例实际要求且已完成的动作；
    案例未要求的动作不要无意义执行（不无故改写原稿）。
-3. `source_mapping` 覆盖每一条正文引用，字段含义见
+4. `source_mapping` 覆盖每一条正文引用，字段含义见
    `references/evidence_mapping.md` 第 3 节；`evidence_excerpt`/`evidence_location`
    只能填真实读到的内容。
-4. 不新增材料外事实：`basis` 只能援引文献库条目的题录、摘要（如材料提供）或原文。
-5. 快照可回溯：`/app/work/snapshot/` 保留原始输入副本；`change_log` 每一步可对应
+5. 不新增材料外事实：`basis` 只能援引文献库条目的题录、摘要（如材料提供）或原文。
+6. 快照可回溯：`/app/work/snapshot/` 保留原始输入副本；`change_log` 每一步可对应
    快照与产物间的差异。
-6. 所有 `deliverables` 路径必须真实存在；字数受限时优先保证 `case_id`、`status`、
+7. 所有 `deliverables` 路径必须真实存在；字数受限时优先保证 `case_id`、`status`、
    `deliverables`、`uncertainty` 完整。

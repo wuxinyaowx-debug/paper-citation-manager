@@ -17,6 +17,7 @@ TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.join(os.path.dirname(TESTS_DIR), "scripts")
 sys.path.insert(0, SCRIPTS_DIR)
 
+import apa7 as apa7_mod
 import dedup as dedup_mod
 import gbt7714
 import refparse
@@ -426,6 +427,49 @@ class TestFormat(unittest.TestCase):
         self.assertTrue(lines[0].startswith("[1] C D. B"))
         self.assertTrue(lines[1].startswith("[2] A B. A"))
         self.assertTrue(any(w["id"] == "e99" for w in warnings))
+
+
+# ---------------------------------------------------------------- APA 7
+
+class TestApa7(unittest.TestCase):
+    def test_apa_journal(self):
+        e = make_entry(id="e1", title="Deep learning", authors=["LeCun, Yann", "Bengio, Yoshua",
+                       "Hinton, Geoffrey"], year="2015", journal="Nature", volume="521",
+                       issue="7553", pages="436-444", doi="10.1038/nature14539")
+        s = apa7_mod.format_entry(e, warnings=[])
+        self.assertTrue(s.startswith("LeCun, Y., Bengio, Y., & Hinton, G. (2015). Deep learning. "))
+        self.assertIn("*Nature*, *521*(7553), 436-444.", s)
+        self.assertIn("https://doi.org/10.1038/nature14539", s)
+
+    def test_apa_zh_authors_and_warnings(self):
+        e = make_entry(id="e1", title="深度学习方法研究", authors=["张三", "李四", "王五", "赵六"],
+                       year="2020", journal="物理学报", volume="69", issue="12",
+                       pages="120101", language="zh")
+        warnings = []
+        s = apa7_mod.format_entry(e, warnings=warnings)
+        self.assertTrue(s.startswith("张三, 李四, 王五, & 赵六. (2020)."))
+        # 西文题名才提示 sentence case；中文题名不提示
+        self.assertFalse(any("大小写" in w["warning"] for w in warnings))
+
+    def test_apa_book_and_missing_fields(self):
+        e = make_entry(id="e1", type="book", title="Deep Learning",
+                       authors=["Goodfellow, Ian", "Bengio, Yoshua", "Courville, Aaron"],
+                       year="2016", publisher="MIT Press")
+        s = apa7_mod.format_entry(e, warnings=[])
+        self.assertIn("*Deep Learning*. MIT Press.", s)
+        e2 = make_entry(id="e2", title="No Venue Paper", authors=["Zhang, San"], year="2021")
+        warnings = []
+        s2 = apa7_mod.format_entry(e2, warnings=warnings)
+        self.assertTrue(any("刊名" in w["warning"] for w in warnings))
+        self.assertNotIn("None", s2)
+
+    def test_apa_library_sorted_unnumbered(self):
+        e1 = make_entry(id="e1", title="B work", authors=["Zhang, San"], year="2020", journal="J")
+        e2 = make_entry(id="e2", title="A work", authors=["Adams, Amy"], year="2021", journal="J")
+        text, warnings = apa7_mod.format_library([e1, e2])
+        lines = [ln for ln in text.strip().splitlines() if ln.strip()]
+        self.assertTrue(lines[0].startswith("Adams, A."))   # 按首著者字母排序
+        self.assertFalse(lines[0].startswith("[1]"))          # APA 不编号
 
 
 # ---------------------------------------------------------------- 端到端与稳定性
